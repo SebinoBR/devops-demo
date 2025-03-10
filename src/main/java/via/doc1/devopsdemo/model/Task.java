@@ -1,14 +1,24 @@
 package via.doc1.devopsdemo.model;
 
+import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.Objects;
 
+@Entity(name = "Task")
+@Table(name = "task")
 public class Task {
+
+    @Id
     private String id;
+
     private String name;
     private String description;
 
-    public Task() {
-    }
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JsonIgnore  // Prevent circular references during JSON serialization
+    private TeamMember teamMember;  // Each Task is associated with one TeamMember
+
+    public Task() {}
 
     public Task(String id, String name, String description) {
         this.id = id;
@@ -16,6 +26,16 @@ public class Task {
         this.description = description;
     }
 
+    // Getter and Setter for TeamMember association
+    public TeamMember getTeamMember() {
+        return teamMember;
+    }
+
+    public void setTeamMember(TeamMember teamMember) {
+        this.teamMember = teamMember;
+    }
+
+    // Getter and Setter for Task fields
     public String getId() {
         return id;
     }

@@ -1,12 +1,29 @@
 package via.doc1.devopsdemo.model;
 
+import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.List;
+import java.util.ArrayList;
 
+
+import java.util.Objects;
+
+
+@Entity(name = "TeamMember")
+@Table(name = "team_member")
 public class TeamMember {
+
+    @Id
     private String id;
+
     private String name;
     private String email;
-    private List<Task> tasks;
+
+    @OneToMany(fetch = FetchType.LAZY, mappedBy = "teamMember")
+    @JsonIgnore
+    private List<Task> tasks = new ArrayList<>();
+
+    public TeamMember() {}
 
     public TeamMember(String id, String name, String email, List<Task> tasks) {
         this.id = id;
@@ -14,6 +31,7 @@ public class TeamMember {
         this.email = email;
         this.tasks = tasks;
     }
+
 
     public String getId() {
         return id;
