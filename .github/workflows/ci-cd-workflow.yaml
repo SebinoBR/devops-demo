@@ -29,8 +29,8 @@ jobs:
           
       - name: Build and test backend
         run: |
-          cd backend  # Adjust this path if needed
-          ./mvnw clean package
+          cd devops-demo
+          mvn clean package
       
       # Cache Node modules
       - name: Cache Node.js modules
@@ -47,7 +47,7 @@ jobs:
           
       - name: Build and test frontend
         run: |
-          cd frontend  # Adjust this path if needed
+          cd devops-demo
           npm ci
           npm run build
           npm test -- --watchAll=false
