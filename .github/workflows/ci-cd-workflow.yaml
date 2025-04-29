@@ -2,125 +2,122 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-      
+        uses: actions/checkout@v4 # Updated to v4
+
       # Cache Maven dependencies
       - name: Cache Maven packages
-        uses: actions/cache@v3
+        uses: actions/cache@v4 # Updated to v4
         with:
           path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2
-      
+          key: ${{ runner.os }}-m2-${{ hashFiles('backend/pom.xml') }} # More specific path
+          restore-keys: ${{ runner.os }}-m2-
+
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
-          java-version: '17'
-          distribution: 'adopt'
-          
-      - name: Build and test backend
+          java-version: "17"
+          distribution: "adopt"
+
+      - name: Build backend
         run: |
-          cd devops-demo
-          mvn clean package
-      
-      # Cache Node modules
+          cd backend
+          mvn clean package # Removed ./, added explicit cd
+          
+      - name: Run Backend GET-Only Tests # Adjusted for GET-only
+        run: |
+          cd backend
+          #  mvn test -Dtest=YourGetOnlyTest #<- Specify your test class/method if needed
+          mvn test # Run all tests, or specify a specific test
+
+      # Cache Node.js modules
       - name: Cache Node.js modules
-        uses: actions/cache@v3
+        uses: actions/cache@v4 # Updated to v4
         with:
           path: frontend/node_modules
           key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
           restore-keys: ${{ runner.os }}-node-
-      
+
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '16'
-          
-      - name: Build and test frontend
+          node-version: "16"
+
+      - name: Build frontend
         run: |
-          cd devops-demo
+          cd frontend
           npm ci
           npm run build
-          npm test -- --watchAll=false
-  
+
+      - name: Run Frontend Tests 
+        run: |
+          cd frontend
+          npm test -- --watchAll=false # Or adjust for GET-only if applicable
+
   build-docker-images:
     needs: build-and-test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-      
+        uses: actions/checkout@v4 # Updated to v4
+
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      
-      - name: Build backend Docker image
-        uses: docker/build-push-action@v3
+        uses: docker/setup-buildx-action@v3 #updated
+
+      - name: Docker login
+        uses: docker/login-action@v3 #addded
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Build and push backend Docker image
+        uses: docker/build-push-action@v5 # Updated
         with:
           context: ./backend
-          push: false
-          load: true
-          tags: devops-demo:latest
+          push: true # Changed to true
+          tags: ghcr.io/${{ github.repository }}/backend:${{ github.sha }} #changed
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      
-      - name: Build frontend Docker image
-        uses: docker/build-push-action@v3
+          
+      - name: Build and push frontend Docker image
+        uses: docker/build-push-action@v5 # Updated
         with:
           context: ./frontend
-          push: false
-          load: true
-          tags: viatab-frontend:latest
+          push: true #changed to true
+          tags: ghcr.io/${{ github.repository }}/frontend:${{ github.sha }} #changed
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      
-      - name: Save Docker images
-        run: |
-          mkdir -p docker-images
-          docker save devops-demo:latest > docker-images/backend.tar
-          docker save viatab-frontend:latest > docker-images/frontend.tar
-      
-      - name: Upload Docker images
-        uses: actions/upload-artifact@v3
-        with:
-          name: docker-images
-          path: docker-images
-  
+
   deploy-to-kubernetes:
     needs: build-docker-images
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-      
-      - name: Download Docker images
-        uses: actions/download-artifact@v3
-        with:
-          name: docker-images
-          path: docker-images
-      
-      - name: Load Docker images
-        run: |
-          docker load < docker-images/backend.tar
-          docker load < docker-images/frontend.tar
-      
-      - name: Start Minikube
+        uses: actions/checkout@v4 # Updated to v4
+
+      - name: Set up Minikube
         uses: medyagh/setup-minikube@latest
-      
+
       - name: Load images into Minikube
         run: |
           eval $(minikube -p minikube docker-env)
-          minikube image load devops-demo:latest
-          minikube image load viatab-frontend:latest
-      
+          #  minikube image load devops-demo:latest # Removed, use tags from GHCR
+          #  minikube image load viatab-frontend:latest # Removed, use tags from GHCR
+          docker pull ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
+          docker pull ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
+          minikube image load ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
+          minikube image load ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
+          
+
       - name: Deploy to Kubernetes
         run: |
           kubectl apply -f k8s/configmap.yaml
@@ -132,20 +129,21 @@ jobs:
           kubectl apply -f k8s/backend-service.yaml
           kubectl apply -f k8s/frontend-deployment.yaml
           kubectl apply -f k8s/frontend-service.yaml
-      
+
       - name: Verify deployment
         run: |
           kubectl get pods
           kubectl get services
           kubectl get deployments
-      
+
       - name: Wait for deployments to be ready
         run: |
           kubectl wait --for=condition=available --timeout=300s deployment/postgres-db
           kubectl wait --for=condition=available --timeout=300s deployment/backend
           kubectl wait --for=condition=available --timeout=300s deployment/frontend
-      
+
       - name: Get service URLs
         run: |
           minikube service frontend-service --url
           minikube service backend-service --url
+
