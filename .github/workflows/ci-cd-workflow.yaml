@@ -121,7 +121,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
-          file: ./frontend/Dockerfile  # Changed from 'dockerfile' to 'file' which is the correct parameter
+          file: Dockerfile  # Frontend Dockerfile is just called Dockerfile
           push: true
           tags: ghcr.io/${{ env.REPO_LOWER }}/frontend:${{ github.sha }}
           cache-from: type=gha
