@@ -29,7 +29,7 @@ jobs:
 
       - name: Build backend
         run: |
-          cd backend
+          cd devops-demo
           mvn clean package # Removed ./, added explicit cd
           
       - name: Run Backend GET-Only Tests # Adjusted for GET-only
@@ -53,13 +53,13 @@ jobs:
 
       - name: Build frontend
         run: |
-          cd frontend
+          cd devops-demo/frontend
           npm ci
           npm run build
 
       - name: Run Frontend Tests 
         run: |
-          cd frontend
+          cd devops-demo/frontend
           npm test -- --watchAll=false # Or adjust for GET-only if applicable
 
   build-docker-images:
