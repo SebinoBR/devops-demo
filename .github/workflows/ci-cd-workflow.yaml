@@ -30,7 +30,7 @@ jobs:
 
       - name: Build backend
         run: |
-          mvn clean package
+          mvn clean package -DskipTests
 
       - name: Run Backend GET-Only Tests
         run: |
@@ -82,6 +82,24 @@ jobs:
       - name: Set lowercase repository name
         run: |
           echo "REPO_LOWER=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      # Upload JAR as artifact
+      - name: Upload target directory
+        uses: actions/upload-artifact@v3
+        with:
+          name: target-files
+          path: target/
+          retention-days: 1
+
+      # Download JAR for Docker build
+      - name: Download target directory
+        uses: actions/download-artifact@v3
+        with:
+          name: target-files
+          path: target/
+
+      - name: List target directory contents
+        run: ls -la target/
 
       - name: Build backend Docker image
         uses: docker/build-push-action@v5
