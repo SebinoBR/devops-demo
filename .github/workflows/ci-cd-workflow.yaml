@@ -134,16 +134,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Minikube
-        uses: medyagh/setup-minikube@latest
-        with:
-          minikube-version: "v1.23.2"
+      # FIX: Manual setup of Minikube instead of using medyagh/setup-minikube action
+      - name: Install Minikube
+        run: |
+          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          sudo install minikube-linux-amd64 /usr/local/bin/minikube
+          minikube version
 
-      # FIX: Change from kubernetes-actions/setup-kubectl@v3 to azure/setup-kubectl@v3
+      - name: Start Minikube
+        run: |
+          minikube start --driver=docker
+          minikube status
+
+      # Set up kubectl using the stable azure action
       - name: Set up kubectl
         uses: azure/setup-kubectl@v3
-        with:
-          version: "v1.22.0"
 
       # Convert repository name to lowercase for Docker tags
       - name: Set lowercase repository name
@@ -152,37 +157,68 @@ jobs:
 
       - name: Load images into Minikube
         run: |
-          eval $(minikube -p minikube docker-env)
+          eval $(minikube docker-env)
           docker pull ghcr.io/${{ env.REPO_LOWER }}/backend:${{ github.sha }}
           docker pull ghcr.io/${{ env.REPO_LOWER }}/frontend:${{ github.sha }}
-          minikube image load ghcr.io/${{ env.REPO_LOWER }}/backend:${{ github.sha }}
-          minikube image load ghcr.io/${{ env.REPO_LOWER }}/frontend:${{ github.sha }}
+          
+          # Tag the images with the names expected in K8s deployment files
+          docker tag ghcr.io/${{ env.REPO_LOWER }}/backend:${{ github.sha }} backend:latest
+          docker tag ghcr.io/${{ env.REPO_LOWER }}/frontend:${{ github.sha }} frontend:latest
+          
+          # Verify that images are available in Minikube
+          docker images
 
       - name: Deploy to Kubernetes
         run: |
+          # Create directories and permissions for PV if needed
+          minikube ssh "sudo mkdir -p /mnt/data && sudo chmod 777 /mnt/data"
+          
+          # Apply Kubernetes resources
           kubectl apply -f k8s/configmap.yaml
           kubectl apply -f k8s/db-pv.yaml
           kubectl apply -f k8s/db-pvc.yaml
           kubectl apply -f k8s/postgres-deployment.yaml
           kubectl apply -f k8s/postgres-service.yaml
+          
+          # Update deployment files with correct image names if needed
+          sed -i 's|image:.*|image: backend:latest|' k8s/backend-deployment.yaml
+          sed -i 's|image:.*|image: frontend:latest|' k8s/frontend-deployment.yaml
+          
+          # Apply backend and frontend deployments
           kubectl apply -f k8s/backend-deployment.yaml
           kubectl apply -f k8s/backend-service.yaml
           kubectl apply -f k8s/frontend-deployment.yaml
           kubectl apply -f k8s/frontend-service.yaml
+          
+          # Verify what we've deployed
+          kubectl get all
 
       - name: Verify deployment
         run: |
+          # Give some time for pods to start
+          sleep 30
           kubectl get pods
           kubectl get services
           kubectl get deployments
 
       - name: Wait for deployments to be ready
         run: |
-          kubectl wait --for=condition=available --timeout=300s deployment/postgres-db
-          kubectl wait --for=condition=available --timeout=300s deployment/backend
-          kubectl wait --for=condition=available --timeout=300s deployment/frontend
+          # Get actual deployment names
+          POSTGRES_DEPLOYMENT=$(kubectl get deployment -l app=postgres -o jsonpath="{.items[0].metadata.name}")
+          BACKEND_DEPLOYMENT=$(kubectl get deployment -l app=backend -o jsonpath="{.items[0].metadata.name}")
+          FRONTEND_DEPLOYMENT=$(kubectl get deployment -l app=frontend -o jsonpath="{.items[0].metadata.name}")
+          
+          echo "Waiting for $POSTGRES_DEPLOYMENT to be available..."
+          kubectl wait --for=condition=available --timeout=300s deployment/$POSTGRES_DEPLOYMENT
+          
+          echo "Waiting for $BACKEND_DEPLOYMENT to be available..."
+          kubectl wait --for=condition=available --timeout=300s deployment/$BACKEND_DEPLOYMENT
+          
+          echo "Waiting for $FRONTEND_DEPLOYMENT to be available..."
+          kubectl wait --for=condition=available --timeout=300s deployment/$FRONTEND_DEPLOYMENT
 
       - name: Get service URLs
         run: |
+          minikube service list
           minikube service frontend-service --url
           minikube service backend-service --url
