@@ -1,0 +1,36 @@
+name: Continuous Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v2
+        
+      - name: Set up Minikube
+        uses: actions/setup-minikube@v2
+        with:
+          minikube-version: 'v1.23.2'
+          
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v2
+        with:
+          kubectl-version: 'v1.22.0'
+
+      - name: Apply Kubernetes Configurations
+        run: |
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/configmap.yaml
+          
+      - name: Verify deployment
+        run: |
+          kubectl get pods
+          kubectl get services

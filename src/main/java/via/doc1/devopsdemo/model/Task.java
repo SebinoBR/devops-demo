@@ -2,40 +2,40 @@ package via.doc1.devopsdemo.model;
 
 import jakarta.persistence.*;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import java.util.Objects;
+import java.util.UUID;
 
-@Entity(name = "Task")
+@Entity
 @Table(name = "task")
 public class Task {
 
     @Id
     private String id;
 
-    private String name;
+    private String title;
     private String description;
+    private boolean completed;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JsonIgnore  // Prevent circular references during JSON serialization
-    private TeamMember teamMember;  // Each Task is associated with one TeamMember
+    @JoinColumn(name = "team_member_id")
+    @JsonIgnore
+    private TeamMember teamMember;
 
-    public Task() {}
+    @PrePersist
+    protected void onCreate() {
+        if (this.id == null) {
+            this.id = UUID.randomUUID().toString();
+        }
+    }
 
-    public Task(String id, String name, String description) {
-        this.id = id;
-        this.name = name;
+    public Task() {
+    }
+
+    public Task(String title, String description, boolean completed) {
+        this.title = title;
         this.description = description;
+        this.completed = completed;
     }
 
-    // Getter and Setter for TeamMember association
-    public TeamMember getTeamMember() {
-        return teamMember;
-    }
-
-    public void setTeamMember(TeamMember teamMember) {
-        this.teamMember = teamMember;
-    }
-
-    // Getter and Setter for Task fields
     public String getId() {
         return id;
     }
@@ -44,12 +44,12 @@ public class Task {
         this.id = id;
     }
 
-    public String getName() {
-        return name;
+    public String getTitle() {
+        return title;
     }
 
-    public void setName(String name) {
-        this.name = name;
+    public void setTitle(String title) {
+        this.title = title;
     }
 
     public String getDescription() {
@@ -60,25 +60,26 @@ public class Task {
         this.description = description;
     }
 
+    public boolean isCompleted() {
+        return completed;
+    }
+
+    public void setCompleted(boolean completed) {
+        this.completed = completed;
+    }
+
+    public TeamMember getTeamMember() {
+        return teamMember;
+    }
+
+    public void setTeamMember(TeamMember teamMember) {
+        this.teamMember = teamMember;
+    }
+
     @Override
     public String toString() {
-        return "Task{" +
-                "id='" + id + '\'' +
-                ", name='" + name + '\'' +
-                ", description='" + description + '\'' +
-                '}';
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        Task task = (Task) o;
-        return id.equals(task.id);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(id);
+        return String.format(
+                "Task [id=%s, title=%s, description=%s, completed=%b]",
+                id, title, description, completed);
     }
 }

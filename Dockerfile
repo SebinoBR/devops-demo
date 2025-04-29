@@ -1,10 +1,16 @@
-# Fetch Java
-FROM eclipse-temurin:21-jdk-alpine
-# Expose port 8080
-EXPOSE 8080
-# Set a docker volume if you want
-VOLUME /backend_volume
-# Add the jar file
-ADD /target/*.jar devops-demo-1.0.jar
-# Start the application
-ENTRYPOINT ["java", "-jar", "/devops-demo-1.0.jar"]
+FROM node:18-alpine
+
+WORKDIR /app
+
+
+
+COPY frontend/package.json ./
+COPY frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/. .
+RUN npm run build
+
+EXPOSE 3000
+
+CMD ["npm", "start"]

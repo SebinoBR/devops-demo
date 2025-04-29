@@ -8,6 +8,7 @@ import via.doc1.devopsdemo.repository.TaskRepository;
 import via.doc1.devopsdemo.repository.TeamMemberRepository;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class TeamService {
@@ -19,18 +20,18 @@ public class TeamService {
     private TaskRepository taskRepository;
 
     // GET method to retrieve a TeamMember by ID
-    public TeamMember getTeamMember(String memberId) {
+    public TeamMember getTeamMember(String memberId) {  // Changed to String
         return teamRepository.findById(memberId).orElse(null);
     }
 
     // GET method to retrieve all Tasks associated with a TeamMember
-    public List<Task> getTasks(String memberId) {
+    public List<Task> getTasks(String memberId) {  // Changed to String
         TeamMember member = getTeamMember(memberId);
         return member == null ? null : member.getTasks();
     }
 
     // GET method to retrieve a specific Task for a TeamMember
-    public Task getTask(String memberId, String taskId) {
+    public Task getTask(String memberId, Long taskId) {  // Changed to String
         TeamMember member = getTeamMember(memberId);
         if (member == null) {
             return null;
@@ -45,16 +46,25 @@ public class TeamService {
 
     // POST method to save a new TeamMember to the database
     public TeamMember createTeamMember(TeamMember teamMember) {
-        return teamRepository.save(teamMember);  // Save the TeamMember to the DB
+        // Ensure ID is set before saving
+        if (teamMember.getId() == null || teamMember.getId().isEmpty()) {
+            teamMember.setId(UUID.randomUUID().toString());
+        }
+        return teamRepository.save(teamMember);
     }
 
     // POST method to create and associate a Task with a TeamMember
-    public Task createTaskForMember(String memberId, Task task) {
-        TeamMember teamMember = getTeamMember(memberId);  // Retrieve the member
+    public Task createTaskForMember(String memberId, Task task) {  // Changed to String
+        TeamMember teamMember = getTeamMember(memberId);
         if (teamMember != null) {
-            task.setTeamMember(teamMember);  // Associate the task with the member
-            return taskRepository.save(task);  // Save the Task to the DB
+            task.setTeamMember(teamMember);
+            return taskRepository.save(task);
         }
-        return null;  // If member not found, return null
+        return null;
+    }
+
+    // GET method to retrieve all TeamMembers
+    public List<TeamMember> getAllTeamMembers() {
+        return teamRepository.findAll();
     }
 }

@@ -4,10 +4,7 @@ import jakarta.persistence.*;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.List;
 import java.util.ArrayList;
-
-
-import java.util.Objects;
-
+import java.util.UUID;
 
 @Entity(name = "TeamMember")
 @Table(name = "team_member")
@@ -23,14 +20,32 @@ public class TeamMember {
     @JsonIgnore
     private List<Task> tasks = new ArrayList<>();
 
-    public TeamMember() {}
+    // This method will be called by JPA before persisting
+    @PrePersist
+    protected void onCreate() {
+        if (this.id == null) {
+            this.id = UUID.randomUUID().toString();
+        }
+    }
 
-    public TeamMember(String id, String name, String email, List<Task> tasks) {
+    public TeamMember() {
+        // Empty constructor - don't generate UUID here
+    }
+
+    public TeamMember(String name, String email) {
+        this.name = name;
+        this.email = email;
+        // Don't set ID here either
+    }
+
+    // Constructor for cases where you want to specify the ID
+    public TeamMember(String id, String name, String email) {
         this.id = id;
         this.name = name;
         this.email = email;
-        this.tasks = tasks;
     }
+
+    
 
 
     public String getId() {
