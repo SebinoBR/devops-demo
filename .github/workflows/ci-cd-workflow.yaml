@@ -7,6 +7,11 @@ on:
   pull_request:
     branches: [main, master]
 
+# Add permissions section at the top level
+permissions:
+  contents: read
+  packages: write  # This gives permission to push to GHCR
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
