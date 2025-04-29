@@ -11,14 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 # Updated to v4
+        uses: actions/checkout@v4
 
       # Cache Maven dependencies
       - name: Cache Maven packages
-        uses: actions/cache@v4 # Updated to v4
+        uses: actions/cache@v4
         with:
           path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('backend/pom.xml') }} # More specific path
+          key: ${{ runner.os }}-m2-${{ hashFiles('backend/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2-
 
       - name: Set up JDK 17
@@ -30,20 +30,19 @@ jobs:
       - name: Build backend
         run: |
           cd devops-demo
-          mvn clean package # Removed ./, added explicit cd
-          
-      - name: Run Backend GET-Only Tests # Adjusted for GET-only
+          mvn clean package
+
+      - name: Run Backend GET-Only Tests
         run: |
-          cd backend
-          #  mvn test -Dtest=YourGetOnlyTest #<- Specify your test class/method if needed
-          mvn test # Run all tests, or specify a specific test
+          cd devops-demo # Ensure correct directory
+          mvn test #  Adjust if you have specific GET tests
 
       # Cache Node.js modules
       - name: Cache Node.js modules
-        uses: actions/cache@v4 # Updated to v4
+        uses: actions/cache@v4
         with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
+          path: devops-demo/frontend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('devops-demo/frontend/package-lock.json') }}
           restore-keys: ${{ runner.os }}-node-
 
       - name: Set up Node.js
@@ -57,43 +56,43 @@ jobs:
           npm ci
           npm run build
 
-      - name: Run Frontend Tests 
+      - name: Run Frontend Tests
         run: |
           cd devops-demo/frontend
-          npm test -- --watchAll=false # Or adjust for GET-only if applicable
+          npm test -- --watchAll=false
 
   build-docker-images:
     needs: build-and-test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 # Updated to v4
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3 #updated
+        uses: docker/setup-buildx-action@v3
 
       - name: Docker login
-        uses: docker/login-action@v3 #addded
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-          
+
       - name: Build and push backend Docker image
-        uses: docker/build-push-action@v5 # Updated
+        uses: docker/build-push-action@v5
         with:
           context: ./backend
-          push: true # Changed to true
-          tags: ghcr.io/${{ github.repository }}/backend:${{ github.sha }} #changed
+          push: true
+          tags: ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          
+
       - name: Build and push frontend Docker image
-        uses: docker/build-push-action@v5 # Updated
+        uses: docker/build-push-action@v5
         with:
           context: ./frontend
-          push: true #changed to true
-          tags: ghcr.io/${{ github.repository }}/frontend:${{ github.sha }} #changed
+          push: true
+          tags: ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -102,21 +101,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 # Updated to v4
+        uses: actions/checkout@v4
 
       - name: Set up Minikube
-        uses: medyagh/setup-minikube@latest
+        uses: medyagh/setup-minikube@latest # Updated to latest
 
       - name: Load images into Minikube
         run: |
           eval $(minikube -p minikube docker-env)
-          #  minikube image load devops-demo:latest # Removed, use tags from GHCR
-          #  minikube image load viatab-frontend:latest # Removed, use tags from GHCR
           docker pull ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
           docker pull ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
           minikube image load ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
           minikube image load ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
-          
 
       - name: Deploy to Kubernetes
         run: |
@@ -146,4 +142,3 @@ jobs:
         run: |
           minikube service frontend-service --url
           minikube service backend-service --url
-
