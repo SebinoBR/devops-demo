@@ -1,3 +1,4 @@
+# Combined CI/CD Workflow (ci-cd-workflow.yaml)
 name: CI/CD Pipeline
 
 on:
@@ -18,7 +19,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('backend/pom.xml') }}
+          key: ${{ runner.os }}-m2-${{ hashFiles('./devops-demo/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2-
 
       - name: Set up JDK 17
@@ -34,8 +35,8 @@ jobs:
 
       - name: Run Backend GET-Only Tests
         run: |
-          cd devops-demo # Ensure correct directory
-          mvn test #  Adjust if you have specific GET tests
+          cd devops-demo
+          mvn test
 
       # Cache Node.js modules
       - name: Cache Node.js modules
@@ -81,8 +82,8 @@ jobs:
       - name: Build backend Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./devops-demo # Changed from ./backend to ./devops-demo
-          dockerfile: ./Dockerfile.backend # Changed from ./backend/Dockerfile to ./Dockerfile.backend
+          context: ./devops-demo
+          dockerfile: ./Dockerfile.backend
           push: true
           tags: ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
           cache-from: type=gha
@@ -91,8 +92,8 @@ jobs:
       - name: Build frontend Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./devops-demo/frontend # Changed from ./frontend to ./devops-demo/frontend
-          dockerfile: ./Dockerfile # Changed from ./frontend/Dockerfile  to ./Dockerfile
+          context: ./devops-demo/frontend
+          dockerfile: ./Dockerfile
           push: true
           tags: ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
           cache-from: type=gha
@@ -101,12 +102,20 @@ jobs:
   deploy-to-kubernetes:
     needs: build-docker-images
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Minikube
-        uses: medyagh/setup-minikube@latest
+        uses: medyagh/setup-minikube@latest # Updated to latest
+        with:
+          minikube-version: "v1.23.2"
+
+      - name: Set up kubectl
+        uses: kubernetes-actions/setup-kubectl@v3 # Changed from azure/setup-kubectl@v2
+        with:
+          version: "v1.22.0" #version of kubectl
 
       - name: Load images into Minikube
         run: |
