@@ -4,7 +4,7 @@ WORKDIR /app
 # we don't need to specify "frontend/" in the COPY commands
 COPY package.json ./
 COPY package-lock.json ./
-RUN npm ci
+RUN npm install
 COPY . .
 RUN npm run build
 EXPOSE 3000
