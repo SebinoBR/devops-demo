@@ -78,13 +78,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Convert repository name to lowercase for Docker tags
+      - name: Set lowercase repository name
+        run: |
+          echo "REPO_LOWER=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - name: Build backend Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          dockerfile: Dockerfile.backend
+          file: Dockerfile.backend  # Changed from 'dockerfile' to 'file' which is the correct parameter
           push: true
-          tags: ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
+          tags: ghcr.io/${{ env.REPO_LOWER }}/backend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -92,9 +97,9 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
-          dockerfile: ./frontend/Dockerfile
+          file: ./frontend/Dockerfile  # Changed from 'dockerfile' to 'file' which is the correct parameter
           push: true
-          tags: ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
+          tags: ghcr.io/${{ env.REPO_LOWER }}/frontend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -116,13 +121,18 @@ jobs:
         with:
           version: "v1.22.0"
 
+      # Convert repository name to lowercase for Docker tags (again for this job)
+      - name: Set lowercase repository name
+        run: |
+          echo "REPO_LOWER=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - name: Load images into Minikube
         run: |
           eval $(minikube -p minikube docker-env)
-          docker pull ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
-          docker pull ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
-          minikube image load ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
-          minikube image load ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
+          docker pull ghcr.io/${{ env.REPO_LOWER }}/backend:${{ github.sha }}
+          docker pull ghcr.io/${{ env.REPO_LOWER }}/frontend:${{ github.sha }}
+          minikube image load ghcr.io/${{ env.REPO_LOWER }}/backend:${{ github.sha }}
+          minikube image load ghcr.io/${{ env.REPO_LOWER }}/frontend:${{ github.sha }}
 
       - name: Deploy to Kubernetes
         run: |
