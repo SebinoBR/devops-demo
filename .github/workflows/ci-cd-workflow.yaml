@@ -137,18 +137,23 @@ jobs:
       # FIX: Manual setup of Minikube instead of using medyagh/setup-minikube action
       - name: Install Minikube
         run: |
-          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          curl -LO https://storage.googleapis.com/minikube/releases/v1.30.1/minikube-linux-amd64
           sudo install minikube-linux-amd64 /usr/local/bin/minikube
           minikube version
 
       - name: Start Minikube
         run: |
-          minikube start --driver=docker
+          minikube start --driver=docker --memory=4096 --cpus=2
           minikube status
+          # Ensure driver is working
+          minikube addons list
+          minikube addons enable ingress
 
       # Set up kubectl using the stable azure action
       - name: Set up kubectl
         uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.26.0'
 
       # Convert repository name to lowercase for Docker tags
       - name: Set lowercase repository name
@@ -157,68 +162,200 @@ jobs:
 
       - name: Load images into Minikube
         run: |
-          eval $(minikube docker-env)
+          eval $(minikube -p minikube docker-env)
+          
+          # Pull images from GitHub Container Registry
+          echo "Pulling images from GHCR..."
           docker pull ghcr.io/${{ env.REPO_LOWER }}/backend:${{ github.sha }}
           docker pull ghcr.io/${{ env.REPO_LOWER }}/frontend:${{ github.sha }}
           
           # Tag the images with the names expected in K8s deployment files
+          echo "Tagging images..."
           docker tag ghcr.io/${{ env.REPO_LOWER }}/backend:${{ github.sha }} backend:latest
           docker tag ghcr.io/${{ env.REPO_LOWER }}/frontend:${{ github.sha }} frontend:latest
           
           # Verify that images are available in Minikube
+          echo "Available images:"
           docker images
 
       - name: Deploy to Kubernetes
         run: |
           # Create directories and permissions for PV if needed
+          echo "Setting up persistent volume directory..."
           minikube ssh "sudo mkdir -p /mnt/data && sudo chmod 777 /mnt/data"
           
+          # Create or update files with correct values if needed
+          echo "Updating configuration files..."
+          
+          # Make sure configmap exists and has correct values
+          cat > k8s/configmap.yaml << EOF
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: devops-config
+          data:
+            DATABASE_URL: "jdbc:postgresql://postgres-service:5432/mydb"
+            APP_ENV: "production"
+          EOF
+          
+          # Create/update backend deployment
+          cat > k8s/backend-deployment.yaml << EOF
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: backend
+            labels:
+              app: backend
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: backend
+            template:
+              metadata:
+                labels:
+                  app: backend
+              spec:
+                containers:
+                  - name: backend
+                    image: backend:latest
+                    imagePullPolicy: Never
+                    ports:
+                      - containerPort: 8080
+                    env:
+                      - name: SPRING_DATASOURCE_URL
+                        valueFrom:
+                          configMapKeyRef:
+                            name: devops-config
+                            key: DATABASE_URL
+                      - name: SPRING_DATASOURCE_USERNAME
+                        value: "user"
+                      - name: SPRING_DATASOURCE_PASSWORD
+                        value: "Password1"
+                      - name: SPRING_JPA_HIBERNATE_DDL_AUTO
+                        value: "update"
+          EOF
+          
+          # Create/update frontend deployment
+          cat > k8s/frontend-deployment.yaml << EOF
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: frontend
+            labels:
+              app: frontend
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: frontend
+            template:
+              metadata:
+                labels:
+                  app: frontend
+              spec:
+                containers:
+                  - name: frontend
+                    image: frontend:latest
+                    imagePullPolicy: Never
+                    ports:
+                      - containerPort: 3000
+                    env:
+                      - name: REACT_APP_API_URL
+                        value: "http://backend-service:8080"
+          EOF
+          
           # Apply Kubernetes resources
+          echo "Applying Kubernetes resources..."
           kubectl apply -f k8s/configmap.yaml
           kubectl apply -f k8s/db-pv.yaml
           kubectl apply -f k8s/db-pvc.yaml
           kubectl apply -f k8s/postgres-deployment.yaml
           kubectl apply -f k8s/postgres-service.yaml
-          
-          # Update deployment files with correct image names if needed
-          sed -i 's|image:.*|image: backend:latest|' k8s/backend-deployment.yaml
-          sed -i 's|image:.*|image: frontend:latest|' k8s/frontend-deployment.yaml
-          
-          # Apply backend and frontend deployments
           kubectl apply -f k8s/backend-deployment.yaml
           kubectl apply -f k8s/backend-service.yaml
           kubectl apply -f k8s/frontend-deployment.yaml
           kubectl apply -f k8s/frontend-service.yaml
           
           # Verify what we've deployed
+          echo "Deployment complete. Current resources:"
           kubectl get all
 
       - name: Verify deployment
         run: |
-          # Give some time for pods to start
-          sleep 30
+          # Give time for pods to start
+          echo "Waiting for pods to start..."
+          sleep 60
+          
+          echo "Current pods:"
           kubectl get pods
+          
+          echo "Current services:"
           kubectl get services
+          
+          echo "Current deployments:"
           kubectl get deployments
+          
+          # Check for pod errors
+          echo "Checking for pod errors:"
+          kubectl get pods -o json | jq '.items[] | select(.status.phase != "Running") | {name:.metadata.name, status:.status.phase, reason:.status.conditions[]?.reason}'
+          
+          # Check logs for any pods in Error state
+          for pod in $(kubectl get pods -o jsonpath='{.items[?(@.status.phase!="Running")].metadata.name}'); do
+            echo "Logs for $pod:"
+            kubectl logs $pod
+          done
 
       - name: Wait for deployments to be ready
         run: |
-          # Get actual deployment names
-          POSTGRES_DEPLOYMENT=$(kubectl get deployment -l app=postgres -o jsonpath="{.items[0].metadata.name}")
-          BACKEND_DEPLOYMENT=$(kubectl get deployment -l app=backend -o jsonpath="{.items[0].metadata.name}")
-          FRONTEND_DEPLOYMENT=$(kubectl get deployment -l app=frontend -o jsonpath="{.items[0].metadata.name}")
+          echo "Waiting for deployments to be ready..."
           
-          echo "Waiting for $POSTGRES_DEPLOYMENT to be available..."
-          kubectl wait --for=condition=available --timeout=300s deployment/$POSTGRES_DEPLOYMENT
+          # Set a timeout for the entire operation
+          timeout=300
+          end_time=$(($(date +%s) + timeout))
           
-          echo "Waiting for $BACKEND_DEPLOYMENT to be available..."
-          kubectl wait --for=condition=available --timeout=300s deployment/$BACKEND_DEPLOYMENT
+          # Check for all three deployments
+          deployments=("postgres-db" "backend" "frontend")
           
-          echo "Waiting for $FRONTEND_DEPLOYMENT to be available..."
-          kubectl wait --for=condition=available --timeout=300s deployment/$FRONTEND_DEPLOYMENT
+          for deployment in "${deployments[@]}"; do
+            echo "Checking deployment: $deployment"
+            
+            # Wait until the deployment is available or timeout
+            while [ $(date +%s) -lt $end_time ]; do
+              status=$(kubectl get deployment $deployment -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || echo "NotFound")
+              
+              if [ "$status" = "True" ]; then
+                echo "Deployment $deployment is available"
+                break
+              elif [ "$status" = "NotFound" ]; then
+                echo "Deployment $deployment not found, checking again..."
+              else
+                echo "Deployment $deployment not yet available, waiting..."
+                # Get more details about the deployment
+                kubectl describe deployment $deployment
+              fi
+              
+              sleep 10
+            done
+            
+            # Check if we timed out
+            if [ $(date +%s) -ge $end_time ]; then
+              echo "Timeout waiting for deployment $deployment to be ready"
+              exit 1
+            fi
+          done
+          
+          echo "All deployments are ready!"
 
       - name: Get service URLs
         run: |
+          echo "Service list:"
           minikube service list
+          
+          echo "Frontend service URL:"
           minikube service frontend-service --url
+          
+          echo "Backend service URL:"
           minikube service backend-service --url
+          
+          echo "Deployment complete! Access your application at the URLs above."
