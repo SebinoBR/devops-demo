@@ -19,7 +19,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('./devops-demo/pom.xml') }}
+          key: ${{ runner.os }}-m2-${{ hashFiles('pom.xml') }}
           restore-keys: ${{ runner.os }}-m2-
 
       - name: Set up JDK 17
@@ -30,20 +30,18 @@ jobs:
 
       - name: Build backend
         run: |
-          cd devops-demo
           mvn clean package
 
       - name: Run Backend GET-Only Tests
         run: |
-          cd devops-demo
           mvn test
 
       # Cache Node.js modules
       - name: Cache Node.js modules
         uses: actions/cache@v4
         with:
-          path: devops-demo/frontend/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('devops-demo/frontend/package-lock.json') }}
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
           restore-keys: ${{ runner.os }}-node-
 
       - name: Set up Node.js
@@ -53,13 +51,13 @@ jobs:
 
       - name: Build frontend
         run: |
-          cd devops-demo/frontend
+          cd frontend
           npm ci
           npm run build
 
       - name: Run Frontend Tests
         run: |
-          cd devops-demo/frontend
+          cd frontend
           npm test -- --watchAll=false
 
   build-docker-images:
@@ -82,8 +80,8 @@ jobs:
       - name: Build backend Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./devops-demo
-          dockerfile: ./Dockerfile.backend
+          context: .
+          dockerfile: Dockerfile.backend
           push: true
           tags: ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
           cache-from: type=gha
@@ -92,8 +90,8 @@ jobs:
       - name: Build frontend Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./devops-demo/frontend
-          dockerfile: ./Dockerfile
+          context: ./frontend
+          dockerfile: ./frontend/Dockerfile
           push: true
           tags: ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
           cache-from: type=gha
@@ -108,14 +106,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Minikube
-        uses: medyagh/setup-minikube@latest # Updated to latest
+        uses: medyagh/setup-minikube@latest
         with:
           minikube-version: "v1.23.2"
 
       - name: Set up kubectl
-        uses: kubernetes-actions/setup-kubectl@v3 # Changed from azure/setup-kubectl@v2
+        uses: kubernetes-actions/setup-kubectl@v3
         with:
-          version: "v1.22.0" #version of kubectl
+          version: "v1.22.0"
 
       - name: Load images into Minikube
         run: |
